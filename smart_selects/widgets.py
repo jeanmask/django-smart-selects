@@ -52,6 +52,7 @@ class ChainedSelect(Select):
             chain_field = '-'.join(name.split('-')[:-1] + [self.chain_field])
         else:
             chain_field = self.chain_field
+
         if not self.view_name:
             if self.show_all:
                 view_name = "chained_filter_all"
@@ -59,16 +60,23 @@ class ChainedSelect(Select):
                 view_name = "chained_filter"
         else:
             view_name = self.view_name
+
         kwargs = {'app': self.app_name, 'model': self.model_name,
                   'field': self.model_field, 'value': "1"}
+
         if self.manager is not None:
             kwargs.update({'manager': self.manager})
+
         url = URL_PREFIX + ("/".join(reverse(view_name, kwargs=kwargs).split("/")[:-2]))
+
         if self.auto_choose:
             auto_choose = 'true'
         else:
             auto_choose = 'false'
-        empty_label = iter(self.choices).next()[1]  # Hacky way to getting the correct empty_label from the field instead of a hardcoded '--------'
+
+        # Hacky way to getting the correct empty_label from the field instead
+        # of a hardcoded '--------'
+        empty_label = iter(self.choices).next()[1]
         js = """
         <script type="text/javascript">
         //<![CDATA[
@@ -154,6 +162,7 @@ class ChainedSelect(Select):
         </script>
 
         """
+
         js = js % {"chainfield": chain_field,
                    "url": url,
                    "id": attrs['id'],
@@ -169,20 +178,27 @@ class ChainedSelect(Select):
                 filter = {self.model_field: pk}
             except AttributeError:
                 try:  # maybe m2m?
-                    pks = getattr(item, self.model_field).all().values_list('pk', flat=True)
+                    field_m2m = getattr(item, self.model_field)
+                    pks = field_m2m.all().values_list('pk', flat=True)
                     filter = {self.model_field + "__in": pks}
                 except AttributeError:
                     try:  # maybe a set?
-                        pks = getattr(item, self.model_field + "_set").all().values_list('pk', flat=True)
+                        field_set = getattr(item, self.model_field + "_set")
+                        pks = field_set.all().values_list('pk', flat=True)
                         filter = {self.model_field + "__in": pks}
                     except:  # give up
                         filter = {}
-            filtered = list(get_model(self.app_name, self.model_name).objects.filter(**filter).distinct())
+
+            filtered = get_model(self.app_name, self.model_name).objects
+            filtered = list(filtered.filter(**filter).distinct())
             filtered.sort(cmp=locale.strcoll, key=lambda x: unicode_sorter(unicode(x)))
+
             for choice in filtered:
                 final_choices.append((choice.pk, unicode(choice)))
+
         if len(final_choices) > 1:
             final_choices = [("", (empty_label))] + final_choices
+
         if self.show_all:
             final_choices.append(("", (empty_label)))
             self.choices = list(self.choices)
@@ -190,12 +206,16 @@ class ChainedSelect(Select):
             for ch in self.choices:
                 if not ch in final_choices:
                     final_choices.append(ch)
+
         self.choices = ()
         final_attrs = self.build_attrs(attrs, name=name)
+
         if 'class' in final_attrs:
             final_attrs['class'] += ' chained'
         else:
             final_attrs['class'] = 'chained'
+
         output = super(ChainedSelect, self).render(name, value, final_attrs, choices=final_choices)
         output += js
+
         return mark_safe(output)
