@@ -1,18 +1,19 @@
 import locale
+import hashlib
 
-import django
-
+from django import VERSION
 from django.conf import settings
 from django.contrib.admin.templatetags.admin_static import static
 from django.core.urlresolvers import reverse
 from django.db.models import get_model
 from django.forms.widgets import Select
 from django.utils.safestring import mark_safe
+from django.core.cache import cache
 
 from smart_selects.utils import unicode_sorter
 
 
-if django.VERSION >= (1, 2, 0) and getattr(settings,
+if VERSION >= (1, 2, 0) and getattr(settings,
                                            'USE_DJANGO_JQUERY', True):
     USE_DJANGO_JQUERY = True
 else:
@@ -169,6 +170,7 @@ class ChainedSelect(Select):
                    'value': value,
                    'auto_choose': auto_choose,
                    'empty_label': empty_label}
+
         final_choices = []
 
         if value:
@@ -190,11 +192,20 @@ class ChainedSelect(Select):
                         filter = {}
 
             filtered = get_model(self.app_name, self.model_name).objects
-            filtered = list(filtered.filter(**filter).distinct())
-            filtered.sort(cmp=locale.strcoll, key=lambda x: unicode_sorter(unicode(x)))
+            filtered = filtered.filter(**filter).distinct()
 
-            for choice in filtered:
-                final_choices.append((choice.pk, unicode(choice)))
+            cache_key = u'djsmartselects-list-{0}'.format(hashlib.sha256(unicode(filtered.query)).hexdigest())
+
+            final_choices = cache.get(cache_key, [])
+
+            if not final_choices:
+                filtered = list()
+                filtered.sort(cmp=locale.strcoll, key=lambda x: unicode_sorter(unicode(x)))
+
+                for choice in filtered:
+                    final_choices.append((choice.pk, unicode(choice)))
+
+                cache.set(cache_key, final_choices, 2)
 
         if len(final_choices) > 1:
             final_choices = [("", (empty_label))] + final_choices
